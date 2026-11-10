@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WOWSPAGETI Booth 5×5 — Interactive 3D Viewer</title>
+<style>
+  :root {
+    --accent: #e6332a;
+    --accent-soft: rgba(230, 51, 42, 0.18);
+    --panel: rgba(18, 21, 26, 0.82);
+    --panel-border: rgba(255, 255, 255, 0.10);
+    --text: #f4f6f8;
+    --muted: rgba(244, 246, 248, 0.62);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #12151a; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; color: var(--text); }
+
+  #app { position: fixed; inset: 0; }
+  #app canvas { display: block; }
+
+  #title {
+    position: fixed; top: 18px; left: 20px; pointer-events: none;
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 12px; padding: 12px 18px; backdrop-filter: blur(8px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+  }
+  #title h1 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: 0.2px; }
+  #title h1 .brand { color: var(--accent); }
+  #title p { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
+
+  #toolbar {
+    position: fixed; top: 18px; right: 20px; display: flex; gap: 8px;
+    flex-wrap: wrap; justify-content: flex-end; max-width: 46vw;
+  }
+  .btn {
+    appearance: none; cursor: pointer; border: 1px solid var(--panel-border);
+    background: var(--panel); color: var(--text); border-radius: 10px;
+    padding: 9px 13px; font-size: 13px; font-weight: 600; line-height: 1;
+    backdrop-filter: blur(8px); transition: background 0.15s, border-color 0.15s, transform 0.05s;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.30);
+  }
+  .btn:hover { background: rgba(40, 46, 55, 0.9); border-color: rgba(255,255,255,0.22); }
+  .btn:active { transform: translateY(1px); }
+  .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  #hint {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 20px; padding: 8px 16px; font-size: 12.5px; color: var(--muted);
+    backdrop-filter: blur(8px); white-space: nowrap;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.30);
+  }
+
+  #loading {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: #12151a; z-index: 10; transition: opacity 0.5s;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  .spinner {
+    width: 52px; height: 52px; border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.12); border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loadingText { font-size: 14px; color: var(--muted); letter-spacing: 0.3px; }
+  #loadingLogo { font-size: 22px; font-weight: 800; }
+  #loadingLogo .brand { color: var(--accent); }
+
+  #error {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    text-align: center; padding: 30px; background: #12151a; z-index: 20;
+  }
+  #error .box { max-width: 460px; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 14px; padding: 26px; }
+  #error h2 { margin: 0 0 10px; color: var(--accent); }
+  #error p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+  @media (max-width: 720px) {
+    #toolbar { max-width: none; right: 12px; left: 12px; top: auto; bottom: 64px; justify-content: center; }
+    #hint { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="title">
+  <h1><span class="brand">WOWSPAGETI</span> Booth 5×5</h1>
+  <p id="dims">Memuat dimensi…</p>
+</div>
+
+<div id="toolbar">
+  <button class="btn active" id="btnRotate" title="Putar otomatis">⟳ Auto-putar</button>
+  <button class="btn" id="btnFront">Depan</button>
+  <button class="btn" id="btnSide">Samping</button>
+  <button class="btn" id="btnTop">Atas</button>
+  <button class="btn" id="btnIso">Isometrik</button>
+  <button class="btn" id="btnReset">Reset</button>
+  <button class="btn" id="btnFull">⛶ Layar penuh</button>
+</div>
+
+<div id="hint">🖱 Seret untuk memutar &nbsp;·&nbsp; Scroll untuk zoom &nbsp;·&nbsp; Klik-kanan-seret untuk geser &nbsp;·&nbsp; Klik 2× untuk reset</div>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loadingLogo"><span class="brand">WOWSPAGETI</span> Booth 5×5</div>
+  <div id="loadingText">Memuat model…</div>
+</div>
+
+<div id="error">
+  <div class="box">
+    <h2>Gagal memuat model</h2>
+    <p id="errorText">Terjadi kesalahan saat memuat model 3D.</p>
+  </div>
+</div>
+
+<script src="libs/three.min.js"></script>
+<script src="libs/GLTFLoader.js"></script>
+<script src="libs/OrbitControls.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var container = document.getElementById('app');
+  var loadingEl = document.getElementById('loading');
+  var loadingText = document.getElementById('loadingText');
+  var errorEl = document.getElementById('error');
+  var errorText = document.getElementById('errorText');
+  var dimsEl = document.getElementById('dims');
+
+  function showError(msg) {
+    if (msg) errorText.textContent = msg;
+    loadingEl.classList.add('hidden');
+    errorEl.style.display = 'flex';
+  }
+
+  var renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  container.appendChild(renderer.domElement);
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x161a20);
+
+  var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.05, 2000);
+  camera.position.set(0, 0, 0);
+
+  var hemi = new THREE.HemisphereLight(0xffffff, 0x2a2d33, 0.85);
+  scene.add(hemi);
+
+  var key = new THREE.DirectionalLight(0xffffff, 1.5);
+  key.position.set(6, 10, 8);
+  key.castShadow = true;
+  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.camera.near = 0.5;
+  key.shadow.camera.far = 120;
+  key.shadow.camera.left = -20; key.shadow.camera.right = 20;
+  key.shadow.camera.top = 20; key.shadow.camera.bottom = -20;
+  key.shadow.bias = -0.0004;
+  scene.add(key);
+
+  var fill = new THREE.DirectionalLight(0xbfd0ff, 0.45);
+  fill.position.set(-6, 4, -6);
+  scene.add(fill);
+
+  var rim = new THREE.DirectionalLight(0xffffff, 0.5);
+  rim.position.set(-4, 6, 10);
+  scene.add(rim);
+
+  function buildEnvironment() {
+    var pmrem = new THREE.PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
+    var c = document.createElement('canvas');
+    c.width = 8; c.height = 512;
+    var ctx = c.getContext('2d');
+    var g = ctx.createLinearGradient(0, 0, 0, 512);
+    g.addColorStop(0.0, '#ffffff');
+    g.addColorStop(0.35, '#dfe6ee');
+    g.addColorStop(0.6, '#8b96a5');
+    g.addColorStop(1.0, '#23272e');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 8, 512);
+    var tex = new THREE.CanvasTexture(c);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    var env = pmrem.fromEquirectangular(tex).texture;
+    pmrem.dispose();
+    tex.dispose();
+    return env;
+  }
+  scene.environment = buildEnvironment();
+
+  var controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.7;
+  controls.minDistance = 0.1;
+  controls.maxDistance = 400;
+  controls.target.set(0, 0, 0);
+
+  var model = null;
+  var boxCenter = new THREE.Vector3();
+  var boxDiag = 1;
+
+  function fitView(dirX, dirY, dirZ) {
+    if (!model) return;
+    var dist = boxDiag * (dirX === 0 && dirZ === 0 ? 1.6 : 1.35);
+    var d = new THREE.Vector3(dirX, dirY, dirZ).normalize().multiplyScalar(dist);
+    camera.position.copy(boxCenter).add(d);
+    controls.target.copy(boxCenter);
+    camera.near = Math.max(boxDiag / 2000, 0.02);
+    camera.far = boxDiag * 30;
+    camera.updateProjectionMatrix();
+    controls.update();
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  document.getElementById('btnRotate').addEventListener('click', function () {
+    controls.autoRotate = !controls.autoRotate;
+    this.classList.toggle('active', controls.autoRotate);
+  });
+  function syncRotateBtn() { document.getElementById('btnRotate').classList.toggle('active', controls.autoRotate); }
+  document.getElementById('btnFront').addEventListener('click', function () { controls.autoRotate = false; syncRotateBtn(); fitView(0, 0.28, 1); });
+  document.getElementById('btnSide').addEventListener('click', function () { controls.autoRotate = false; syncRotateBtn(); fitView(1, 0.18, 0); });
+  document.getElementById('btnTop').addEventListener('click', function () { controls.autoRotate = false; syncRotateBtn(); fitView(0, 1, 0.001); });
+  document.getElementById('btnIso').addEventListener('click', function () { controls.autoRotate = false; syncRotateBtn(); fitView(1, 0.62, 1); });
+  document.getElementById('btnReset').addEventListener('click', function () { controls.autoRotate = false; syncRotateBtn(); fitView(0.85, 0.55, 1); });
+  document.getElementById('btnFull').addEventListener('click', function () {
+    if (document.fullscreenElement) { document.exitFullscreen(); }
+    else if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); }
+  });
+
+  renderer.domElement.addEventListener('dblclick', function () {
+    controls.autoRotate = false; syncRotateBtn(); fitView(0.85, 0.55, 1);
+  });
+
+  window.addEventListener('resize', function () {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  var loader = new THREE.GLTFLoader();
+  loader.load('model.glb', function (gltf) {
+    model = gltf.scene;
+    var box = new THREE.Box3().setFromObject(model);
+    boxCenter = box.getCenter(new THREE.Vector3());
+    var size = box.getSize(new THREE.Vector3());
+    boxDiag = size.length() || 1;
+    dimsEl.textContent = formatDim(size.x) + ' × ' + formatDim(size.z) + ' × ' + formatDim(size.y) + '  (P×L×T)';
+    scene.add(model);
+    addGroundShadow(box.min.y);
+    fitView(0.85, 0.55, 1);
+    loadingEl.classList.add('hidden');
+  }, function (ev) {
+    if (ev.total) {
+      var pct = Math.round((ev.loaded / ev.total) * 100);
+      loadingText.textContent = 'Memuat model… ' + pct + '%';
+    }
+  }, function (err) {
+    showError('Gagal memuat model 3D: ' + (err && err.message ? err.message : ''));
+  });
+
+  function formatDim(v) { return (Math.round(v * 100) / 100).toFixed(2) + ' m'; }
+
+  function addGroundShadow(yMin) {
+    var ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(200, 200),
+      new THREE.ShadowMaterial({ opacity: 0.22 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = yMin - 0.01;
+    ground.receiveShadow = true;
+    scene.add(ground);
+  }
+})();
+</script>
+</body>
+</html>
